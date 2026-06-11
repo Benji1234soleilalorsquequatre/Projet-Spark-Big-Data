@@ -18,10 +18,6 @@ GraphFrames / métriques de graphe
 Dashboard Streamlit rafraîchi toutes les 5 s
 ```
 
-## Choix technique principal
-
-Le flux est basé sur un dossier de fichiers JSON plutôt que Kafka. C’est le choix le plus robuste pour un projet étudiant local : aucune dépendance externe lourde, comportement reproductible, intégration native avec Spark Structured Streaming, démonstration claire du streaming infini.
-
 ## Structure
 
 ```text
@@ -37,7 +33,6 @@ spark-bigdata-graph-project/
 │   └── dashboard.py               # interface Streamlit dynamique
 ├── output/                        # sorties Spark lues par le dashboard
 ├── checkpoints/                   # checkpoints Spark Streaming
-├── report/rapport_technique.md
 └── docs/
 ```
 
@@ -105,48 +100,3 @@ Puis ouvrir l’URL Streamlit affichée, généralement `http://localhost:8501`.
   "price": 450.0
 }
 ```
-
-## Concepts Spark couverts
-
-- `SparkSession` comme point d’entrée applicatif.
-- `SparkContext` récupéré depuis la session pour le logging et la configuration runtime.
-- Configuration mémoire : `spark.driver.memory`, `spark.executor.memory`.
-- Configuration des shuffles : `spark.sql.shuffle.partitions`.
-- Structured Streaming avec DataFrames de streaming.
-- Schéma strict `StructType`, sans inférence automatique.
-- Conversion du champ `timestamp` en `timestamp_ts`.
-- `withWatermark("timestamp_ts", "2 minutes")` pour gérer les retards.
-- Fenêtres glissantes de 1 minute avec slide de 30 secondes.
-- Mode `update` pour les agrégations temporelles, car une fenêtre peut évoluer avant clôture par watermark.
-- Mode `append` pour le flux envoyé à `foreachBatch`.
-- GraphFrames sur micro-batches statiques via `foreachBatch()`.
-
-## Sorties générées
-
-- `output/windows/` : agrégations temporelles en Parquet.
-- `output/graph_vertices/` : sommets `id`, `type`, `label`.
-- `output/graph_edges/` : arêtes `src`, `dst`, `relationship`.
-- `output/graph_metrics/` : degrés et centralité approximée.
-- `output/kpis/` : KPIs du dernier micro-batch.
-- `output/top_products/`, `output/top_sellers/`, `output/top_cities/`.
-
-## Captures attendues dans le rapport
-
-1. Terminal du producteur montrant l’écriture continue des fichiers.
-2. Spark UI ou logs Structured Streaming montrant les micro-batches.
-3. Dashboard avec graphe dynamique.
-4. Table des fenêtres temporelles.
-5. Top produits, vendeurs et villes.
-
-## Difficultés techniques
-
-GraphFrames n’est pas un opérateur streaming natif. La solution correcte est d’utiliser `foreachBatch()` : Spark matérialise chaque micro-batch en DataFrame statique, puis GraphFrames peut être appliqué. Si GraphFrames n’est pas disponible localement, le projet reste démontrable grâce aux métriques de degré calculées en DataFrames Spark.
-
-## Améliorations possibles
-
-- Remplacer le dossier JSON par Kafka.
-- Persister les résultats dans Delta Lake.
-- Ajouter une base Neo4j pour l’historique du graphe.
-- Déployer Spark en cluster Docker ou Kubernetes.
-- Ajouter des tests unitaires et des tests de charge.
-- Améliorer le layout du graphe pour très gros volumes.

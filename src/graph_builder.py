@@ -1,33 +1,3 @@
-"""
-graph_builder.py
-
-Construction du graphe dynamique à partir de chaque micro-batch Spark.
-
-Le graphe contient :
-- des utilisateurs ;
-- des produits ;
-- des vendeurs.
-
-Vertices :
-    id, type, label
-
-Edges :
-    src, dst, relationship
-
-Relations :
-- utilisateur -> produit : AIME, VOUT, ACHAT
-- vendeur -> produit : PROPOSE
-
-Ce fichier reste volontairement simple :
-- pas de PageRank ;
-- pas de GraphFrames optionnel ;
-- pas de top produits / vendeurs / villes ;
-- pas de métriques de graphe avancées.
-
-Objectif :
-produire uniquement les données nécessaires au dashboard.
-"""
-
 from __future__ import annotations
 
 import os
@@ -37,12 +7,7 @@ from pyspark.sql import functions as F
 
 
 def safe_write_parquet(df: DataFrame, path: str, mode: str = "overwrite") -> None:
-    """
-    Écrit un DataFrame en Parquet.
 
-    On évite les appels RDD comme df.rdd.isEmpty(),
-    car ils peuvent être instables sous Windows avec Spark local.
-    """
     try:
         (
             df
@@ -57,17 +22,6 @@ def safe_write_parquet(df: DataFrame, path: str, mode: str = "overwrite") -> Non
 
 
 def build_vertices(events_df: DataFrame) -> DataFrame:
-    """
-    Construit les sommets du graphe.
-
-    Format :
-        id, type, label
-
-    Les sommets représentent :
-    - les utilisateurs ;
-    - les produits ;
-    - les vendeurs.
-    """
 
     users = (
         events_df
@@ -107,16 +61,6 @@ def build_vertices(events_df: DataFrame) -> DataFrame:
 
 
 def build_edges(events_df: DataFrame) -> DataFrame:
-    """
-    Construit les arêtes du graphe.
-
-    Format :
-        src, dst, relationship
-
-    Relations :
-    - utilisateur -> produit : AIME, VOUT, ACHAT
-    - vendeur -> produit : PROPOSE
-    """
 
     user_product_edges = (
         events_df
@@ -146,9 +90,6 @@ def build_edges(events_df: DataFrame) -> DataFrame:
 
 
 def compute_kpis(events_df: DataFrame) -> DataFrame:
-    """
-    Calcule uniquement les KPIs globaux affichés dans le dashboard.
-    """
 
     return (
         events_df
@@ -164,21 +105,6 @@ def compute_kpis(events_df: DataFrame) -> DataFrame:
 
 
 def process_graph_batch(events_df: DataFrame, batch_id: int, output_dir: str) -> None:
-    """
-    Fonction appelée par foreachBatch().
-
-    Chaque micro-batch streaming devient un DataFrame statique.
-
-    Sorties produites :
-    - output/vertices
-    - output/edges
-    - output/kpis
-    - output/graph_vertices
-    - output/graph_edges
-    - output/dashboard_kpis
-
-    Les dossiers graph_* et dashboard_kpis servent d'alias pour le dashboard.
-    """
 
     print(f"[GRAPH] Début traitement batch {batch_id}")
 

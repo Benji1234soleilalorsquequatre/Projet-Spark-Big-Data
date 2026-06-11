@@ -1,20 +1,3 @@
-"""
-dashboard.py
-
-Dashboard Streamlit simplifié.
-
-Affiche :
-- KPIs globaux ;
-- graphe dynamique utilisateurs / vendeurs / produits ;
-- fenêtres temporelles Spark.
-
-Retiré volontairement :
-- top produits ;
-- top vendeurs ;
-- top villes ;
-- métriques de graphe avancées.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -133,7 +116,7 @@ def edge_color(relationship: str) -> str:
 def build_graph_figure(
     vertices: pd.DataFrame,
     edges: pd.DataFrame,
-    max_edges: int = 200,
+    max_edges: int = 80,
 ) -> Optional[go.Figure]:
     if vertices.empty or edges.empty:
         return None
@@ -150,7 +133,10 @@ def build_graph_figure(
     edges_sample = edges.head(max_edges).copy()
 
     used_node_ids = set(edges_sample["src"].astype(str)) | set(edges_sample["dst"].astype(str))
-    vertices_sample = vertices[vertices["id"].astype(str).isin(used_node_ids)].copy()
+
+    vertices_sample = vertices[
+        vertices["id"].astype(str).isin(used_node_ids)
+    ].copy()
 
     if vertices_sample.empty or edges_sample.empty:
         return None
@@ -176,21 +162,26 @@ def build_graph_figure(
     if graph.number_of_nodes() == 0:
         return None
 
-    pos = nx.spring_layout(graph, seed=42, k=0.8)
+    pos = nx.spring_layout(
+        graph,
+        seed=42,
+        k=1.3,
+        iterations=80,
+    )
 
     edge_traces = []
 
-    for src, dst, data in graph.edges(data=True):
+    for src, dst, data_edge in graph.edges(data=True):
         x0, y0 = pos[src]
         x1, y1 = pos[dst]
-        relationship = data.get("relationship", "")
+        relationship = data_edge.get("relationship", "")
 
         edge_traces.append(
             go.Scatter(
                 x=[x0, x1, None],
                 y=[y0, y1, None],
                 mode="lines",
-                line=dict(width=1.5, color=edge_color(relationship)),
+                line=dict(width=1.2, color=edge_color(relationship)),
                 hoverinfo="text",
                 text=f"{src} → {dst}<br>{relationship}",
                 showlegend=False,
@@ -203,13 +194,13 @@ def build_graph_figure(
     node_colors = []
     node_sizes = []
 
-    for node_id, data in graph.nodes(data=True):
+    for node_id, data_node in graph.nodes(data=True):
         x, y = pos[node_id]
         node_x.append(x)
         node_y.append(y)
 
-        node_type = data.get("type", "UNKNOWN")
-        label = data.get("label", node_id)
+        node_type = data_node.get("type", "UNKNOWN")
+        label = data_node.get("label", node_id)
 
         node_text.append(
             f"<b>{label}</b><br>"
@@ -218,14 +209,18 @@ def build_graph_figure(
         )
 
         node_colors.append(node_color(node_type))
-        node_sizes.append(16)
+
+        if node_type == "PRODUCT":
+            node_sizes.append(22)
+        elif node_type == "SELLER":
+            node_sizes.append(18)
+        else:
+            node_sizes.append(14)
 
     node_trace = go.Scatter(
         x=node_x,
         y=node_y,
-        mode="markers+text",
-        text=[str(node)[:12] for node in graph.nodes()],
-        textposition="top center",
+        mode="markers",
         hoverinfo="text",
         hovertext=node_text,
         marker=dict(
@@ -239,8 +234,8 @@ def build_graph_figure(
     fig = go.Figure(data=edge_traces + [node_trace])
 
     fig.update_layout(
-        height=650,
-        margin=dict(l=10, r=10, t=30, b=10),
+        height=750,
+        margin=dict(l=10, r=10, t=40, b=10),
         plot_bgcolor="white",
         paper_bgcolor="white",
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
@@ -254,7 +249,7 @@ def build_graph_figure(
 def main() -> None:
     st_autorefresh(interval=5000, key="dashboard_refresh")
 
-    st.title("Projet Big Data — Graphe temps réel d’interactions commerciales")
+    st.title("Graphe temps réel d’interactions commerciales")
     st.caption("Rafraîchissement automatique toutes les 5 secondes")
 
     st.subheader("Paramètres d'affichage")
@@ -262,8 +257,8 @@ def main() -> None:
     max_edges = st.slider(
         "Nombre maximal d'arêtes affichées",
         min_value=20,
-        max_value=300,
-        value=200,
+        max_value=200,
+        value=100,
         step=20,
     )
 

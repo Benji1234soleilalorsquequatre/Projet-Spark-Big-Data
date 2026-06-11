@@ -1,10 +1,3 @@
-"""
-producer.py
-Générateur autonome de flux JSON infini simulant des interactions commerciales.
-Stratégie choisie : écriture de micro-fichiers JSON Lines dans data/input_json/.
-Spark Structured Streaming surveille ce dossier avec readStream().json().
-"""
-
 from __future__ import annotations
 
 import argparse
