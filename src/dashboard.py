@@ -1,22 +1,22 @@
 """
 dashboard.py
 
-Dashboard Streamlit pour visualiser :
-- les KPIs du streaming ;
-- le graphe dynamique utilisateurs / vendeurs / produits ;
-- les fenêtres temporelles Spark ;
-- les tops produits, vendeurs et villes.
+Dashboard Streamlit simplifié.
 
-Version robuste Windows :
-- lit les dossiers Parquet produits par Spark ;
-- supporte plusieurs noms de dossiers ;
-- affiche des messages de debug dans la sidebar ;
-- rafraîchissement automatique toutes les 5 secondes.
+Affiche :
+- KPIs globaux ;
+- graphe dynamique utilisateurs / vendeurs / produits ;
+- fenêtres temporelles Spark.
+
+Retiré volontairement :
+- top produits ;
+- top vendeurs ;
+- top villes ;
+- métriques de graphe avancées.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -26,10 +26,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-
-# ---------------------------------------------------------------------
-# Configuration générale
-# ---------------------------------------------------------------------
 
 st.set_page_config(
     page_title="Projet Big Data - Graphe temps réel",
@@ -41,16 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 
 
-# ---------------------------------------------------------------------
-# Fonctions utilitaires
-# ---------------------------------------------------------------------
-
 def find_parquet_files(path: Path) -> list[Path]:
-    """
-    Récupère tous les fichiers parquet dans un dossier Spark.
-    Spark écrit souvent :
-        output/xxx/part-00000-....snappy.parquet
-    """
     if not path.exists():
         return []
 
@@ -62,14 +49,6 @@ def find_parquet_files(path: Path) -> list[Path]:
 
 
 def read_parquet_folder(path: Path) -> pd.DataFrame:
-    """
-    Lit un dossier Parquet Spark.
-
-    Retourne un DataFrame vide si :
-    - le dossier n'existe pas ;
-    - aucun fichier parquet n'est présent ;
-    - pandas/pyarrow n'arrive pas à lire.
-    """
     parquet_files = find_parquet_files(path)
 
     if not parquet_files:
@@ -93,13 +72,6 @@ def read_parquet_folder(path: Path) -> pd.DataFrame:
 
 
 def read_first_available(output_dir: Path, folder_names: list[str]) -> pd.DataFrame:
-    """
-    Essaie de lire plusieurs dossiers possibles.
-    Utile parce que les noms peuvent varier selon les versions :
-    - vertices / graph_vertices
-    - edges / graph_edges
-    - kpis / dashboard_kpis
-    """
     for folder_name in folder_names:
         df = read_parquet_folder(output_dir / folder_name)
         if not df.empty:
@@ -122,39 +94,19 @@ def format_money(value) -> str:
         return "0 €"
 
 
-# ---------------------------------------------------------------------
-# Chargement des données
-# ---------------------------------------------------------------------
-
 def load_data(output_dir: Path) -> dict[str, pd.DataFrame]:
-    """
-    Charge toutes les données utiles au dashboard.
-    """
     vertices = read_first_available(output_dir, ["graph_vertices", "vertices"])
     edges = read_first_available(output_dir, ["graph_edges", "edges"])
     kpis = read_first_available(output_dir, ["dashboard_kpis", "kpis"])
-
     windows = read_first_available(output_dir, ["windows"])
-    top_products = read_first_available(output_dir, ["top_products"])
-    top_sellers = read_first_available(output_dir, ["top_sellers"])
-    top_cities = read_first_available(output_dir, ["top_cities"])
-    degrees = read_first_available(output_dir, ["graph_metrics", "degrees"])
 
     return {
         "vertices": vertices,
         "edges": edges,
         "kpis": kpis,
         "windows": windows,
-        "top_products": top_products,
-        "top_sellers": top_sellers,
-        "top_cities": top_cities,
-        "degrees": degrees,
     }
 
-
-# ---------------------------------------------------------------------
-# Graphe Plotly
-# ---------------------------------------------------------------------
 
 def node_color(node_type: str) -> str:
     if node_type == "USER":
@@ -178,11 +130,11 @@ def edge_color(relationship: str) -> str:
     return "#999999"
 
 
-def build_graph_figure(vertices: pd.DataFrame, edges: pd.DataFrame, max_edges: int = 200) -> Optional[go.Figure]:
-    """
-    Construit un graphe NetworkX puis l'affiche avec Plotly.
-    """
-
+def build_graph_figure(
+    vertices: pd.DataFrame,
+    edges: pd.DataFrame,
+    max_edges: int = 200,
+) -> Optional[go.Figure]:
     if vertices.empty or edges.empty:
         return None
 
@@ -195,7 +147,6 @@ def build_graph_figure(vertices: pd.DataFrame, edges: pd.DataFrame, max_edges: i
     if not required_edge_cols.issubset(edges.columns):
         return None
 
-    # Limiter le nombre d'arêtes pour garder un dashboard fluide.
     edges_sample = edges.head(max_edges).copy()
 
     used_node_ids = set(edges_sample["src"].astype(str)) | set(edges_sample["dst"].astype(str))
@@ -252,8 +203,6 @@ def build_graph_figure(vertices: pd.DataFrame, edges: pd.DataFrame, max_edges: i
     node_colors = []
     node_sizes = []
 
-    degrees = dict(graph.degree())
-
     for node_id, data in graph.nodes(data=True):
         x, y = pos[node_id]
         node_x.append(x)
@@ -261,16 +210,15 @@ def build_graph_figure(vertices: pd.DataFrame, edges: pd.DataFrame, max_edges: i
 
         node_type = data.get("type", "UNKNOWN")
         label = data.get("label", node_id)
-        degree = degrees.get(node_id, 1)
 
         node_text.append(
             f"<b>{label}</b><br>"
             f"ID: {node_id}<br>"
-            f"Type: {node_type}<br>"
-            f"Degré: {degree}"
+            f"Type: {node_type}"
         )
+
         node_colors.append(node_color(node_type))
-        node_sizes.append(12 + min(degree * 2, 25))
+        node_sizes.append(16)
 
     node_trace = go.Scatter(
         x=node_x,
@@ -303,85 +251,62 @@ def build_graph_figure(vertices: pd.DataFrame, edges: pd.DataFrame, max_edges: i
     return fig
 
 
-# ---------------------------------------------------------------------
-# Interface Streamlit
-# ---------------------------------------------------------------------
-
 def main() -> None:
     st_autorefresh(interval=5000, key="dashboard_refresh")
 
     st.title("Projet Big Data — Graphe temps réel d’interactions commerciales")
     st.caption("Rafraîchissement automatique toutes les 5 secondes")
 
-    with st.sidebar:
-        st.header("Configuration")
-        output_dir_str = st.text_input("Dossier output", value=str(DEFAULT_OUTPUT_DIR))
-        output_dir = Path(output_dir_str)
+    st.subheader("Paramètres d'affichage")
 
-        st.write("Dossier détecté :")
-        st.code(str(output_dir))
+    max_edges = st.slider(
+        "Nombre maximal d'arêtes affichées",
+        min_value=20,
+        max_value=300,
+        value=200,
+        step=20,
+    )
 
-        st.write("Existe :", output_dir.exists())
-
-        if output_dir.exists():
-            folders = sorted([p.name for p in output_dir.iterdir() if p.is_dir()])
-            st.write("Sous-dossiers détectés :")
-            st.write(folders)
-
-        max_edges = st.slider("Nombre maximal d'arêtes affichées", 20, 1000, 200, step=20)
-
+    output_dir = DEFAULT_OUTPUT_DIR
     data = load_data(output_dir)
 
     vertices = data["vertices"]
     edges = data["edges"]
     kpis = data["kpis"]
     windows = data["windows"]
-    top_products = data["top_products"]
-    top_sellers = data["top_sellers"]
-    top_cities = data["top_cities"]
-    degrees = data["degrees"]
-
-    with st.sidebar:
-        st.header("Debug lecture")
-        st.write("vertices :", vertices.shape)
-        st.write("edges :", edges.shape)
-        st.write("kpis :", kpis.shape)
-        st.write("windows :", windows.shape)
-        st.write("top_products :", top_products.shape)
-        st.write("top_sellers :", top_sellers.shape)
-        st.write("top_cities :", top_cities.shape)
-
-    # -----------------------------------------------------------------
-    # KPIs
-    # -----------------------------------------------------------------
 
     total_events = 0
     total_achats = 0
     revenue = 0
-    batch_value = "-"
+    unique_users = 0
+    unique_products = 0
+    unique_sellers = 0
 
     if not kpis.empty:
         row = kpis.iloc[0]
         total_events = row.get("total_events", 0)
         total_achats = row.get("total_achats", 0)
         revenue = row.get("revenue", 0)
+        unique_users = row.get("unique_users", 0)
+        unique_products = row.get("unique_products", 0)
+        unique_sellers = row.get("unique_sellers", 0)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     col1.metric("Événements", format_number(total_events))
     col2.metric("Achats", format_number(total_achats))
-    col3.metric("CA", format_money(revenue))
-    col4.metric("Batch", batch_value)
+    col3.metric("Chiffre d'affaires", format_money(revenue))
 
-    # -----------------------------------------------------------------
-    # Graphe
-    # -----------------------------------------------------------------
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Utilisateurs uniques", format_number(unique_users))
+    col5.metric("Produits uniques", format_number(unique_products))
+    col6.metric("Vendeurs uniques", format_number(unique_sellers))
 
     st.header("Vue graphe")
 
     fig = build_graph_figure(vertices, edges, max_edges=max_edges)
 
     if fig is None:
-        st.info("Aucune donnée de graphe disponible. Vérifie que Spark écrit bien graph_vertices et graph_edges.")
+        st.info("Aucune donnée de graphe disponible pour le moment.")
 
         with st.expander("Debug graphe"):
             st.write("Vertices shape :", vertices.shape)
@@ -398,14 +323,34 @@ def main() -> None:
     else:
         st.plotly_chart(fig, use_container_width=True)
 
-        st.caption(
-            "Couleurs des nœuds : USER = bleu, SELLER = orange, PRODUCT = vert. "
-            "Les arêtes représentent AIME, VOUT, ACHAT ou PROPOSE."
-        )
+        st.markdown("### Légende du graphe")
 
-    # -----------------------------------------------------------------
-    # Fenêtres temporelles
-    # -----------------------------------------------------------------
+        col_nodes, col_edges = st.columns(2)
+
+        with col_nodes:
+            st.markdown(
+                """
+                **Types de nœuds**
+
+                <span style="color:#4C78A8; font-size:22px;">●</span> **USER** : utilisateur  
+                <span style="color:#F58518; font-size:22px;">●</span> **SELLER** : vendeur  
+                <span style="color:#54A24B; font-size:22px;">●</span> **PRODUCT** : produit  
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with col_edges:
+            st.markdown(
+                """
+                **Types d’arêtes**
+
+                <span style="color:#8ECAE6; font-size:22px;">━</span> **AIME** : l’utilisateur aime un produit  
+                <span style="color:#FFB703; font-size:22px;">━</span> **VOUT** : intention forte d’achat  
+                <span style="color:#D62828; font-size:22px;">━</span> **ACHAT** : achat finalisé  
+                <span style="color:#6A4C93; font-size:22px;">━</span> **PROPOSE** : le vendeur propose le produit  
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.header("Fenêtres temporelles Spark")
 
@@ -413,44 +358,6 @@ def main() -> None:
         st.info("Aucune fenêtre temporelle disponible pour le moment.")
     else:
         st.dataframe(windows.head(20), use_container_width=True)
-
-    # -----------------------------------------------------------------
-    # Tops
-    # -----------------------------------------------------------------
-
-    col_a, col_b, col_c = st.columns(3)
-
-    with col_a:
-        st.header("Top produits")
-        if top_products.empty:
-            st.info("Aucune donnée produit.")
-        else:
-            st.dataframe(top_products.head(10), use_container_width=True)
-
-    with col_b:
-        st.header("Top vendeurs")
-        if top_sellers.empty:
-            st.info("Aucune donnée vendeur.")
-        else:
-            st.dataframe(top_sellers.head(10), use_container_width=True)
-
-    with col_c:
-        st.header("Top villes")
-        if top_cities.empty:
-            st.info("Aucune donnée ville.")
-        else:
-            st.dataframe(top_cities.head(10), use_container_width=True)
-
-    # -----------------------------------------------------------------
-    # Métriques de graphe
-    # -----------------------------------------------------------------
-
-    st.header("Métriques de graphe")
-
-    if degrees.empty:
-        st.info("Aucune métrique de degré disponible.")
-    else:
-        st.dataframe(degrees.head(20), use_container_width=True)
 
 
 if __name__ == "__main__":
