@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  spark:
+    image: bitnami/spark:3.5
+    container_name: spark-graph-streaming
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - SPARK_MODE=client
+    command: tail -f /dev/null
+    ports:
+      - "4040:4040"
+  dashboard:
+    image: python:3.11-slim
+    container_name: graph-dashboard
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: bash -lc "pip install -r requirements.txt && streamlit run src/dashboard.py --server.address=0.0.0.0 --server.port=8501"
+    ports:
+      - "8501:8501"
